@@ -4,16 +4,29 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { url, access_token } = req.body;
+  const { url, access_token, resolve_only } = req.body;
   if (!url) return res.status(400).json({ error: 'No URL provided' });
 
   try {
     let resolvedUrl = url;
 
-    // Follow redirects to resolve short links
-    if (url.includes('strava.app.link') || url.includes('str.ava')) {
-      const r = await fetch(url, { method: 'GET', redirect: 'follow' });
-      resolvedUrl = r.url;
+    // Follow redirects for short links
+    if (url.includes('strava.app.link') || url.includes('bit.ly') || url.includes('str.ava')) {
+      try {
+        const r = await fetch(url, { 
+          method: 'GET', 
+          redirect: 'follow',
+          headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+        resolvedUrl = r.url;
+      } catch(e) {
+        resolvedUrl = url;
+      }
+    }
+
+    // If resolve_only, just return the resolved URL
+    if (resolve_only) {
+      return res.status(200).json({ resolved_url: resolvedUrl });
     }
 
     // Extract route or activity ID
@@ -21,7 +34,11 @@ export default async function handler(req, res) {
     const activityMatch = resolvedUrl.match(/activities\/(\d+)/);
 
     if (!routeMatch && !activityMatch) {
-      return res.status(400).json({ error: 'Could not extract route ID from URL', resolved: resolvedUrl });
+      return res.status(400).json({ 
+        error: 'Could not extract route ID from URL', 
+        resolved: resolvedUrl,
+        hint: 'Try opening the route on Strava and copying the full URL from your browser'
+      });
     }
 
     const id = routeMatch?.[1] || activityMatch?.[1];
@@ -48,7 +65,6 @@ export default async function handler(req, res) {
       state: data.location_state || null,
       country: data.location_country || null,
       description: data.description || null,
-      start_latlng: data.start_latlng || null,
     });
 
   } catch(err) {
